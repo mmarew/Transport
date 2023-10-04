@@ -28,11 +28,12 @@ let createTable = async () => {
     });
   ////////////////////////////
   // this is passangers table
-  let tableTransport = `CREATE TABLE IF NOT EXISTS GUZO (guzoId INT AUTO_INCREMENT PRIMARY KEY, passangersLAT FLOAT, passangersLNG FLOAT,  passangersId VARCHAR(900), driversLAT FLOAT,  driversLNG FLOAT, passangersStandingAndDestination varchar(900),  passangersCancilationCause varchar(300),driversId INT,status ENUM ( 'requestedByPassenger','acceptedByDriver','canceledByPassenger','canceledByDriver',    'journeyStarted','journeyEnded'))`;
+  let tableTransport = `CREATE TABLE IF NOT EXISTS GUZO (guzoId INT AUTO_INCREMENT PRIMARY KEY, passangersLAT FLOAT, passangersLNG FLOAT,  passangersId VARCHAR(900), driversLAT FLOAT,  driversLNG FLOAT, passangersStandingAndDestination varchar(900),  passangersCancilationCause varchar(300),driversId INT,status ENUM ( 'requestedByPassenger','acceptedByDriver','canceledByPassenger','canceledByDriver',  'journeyStarted','journeyEnded','journeyEndedConfirmedByPassangers',
+  'CancilationBydriverConfirmedByPassangers','journeyEndedConfirmedByDriver'))`;
   pool
     .query(tableTransport)
     .then((data) => {
-      console.log("data", data);
+      // console.log("data", data);
     })
     .catch((error) => {
       console.log("error", error);
@@ -46,7 +47,7 @@ let createTable = async () => {
   await pool
     .query(passengersTable)
     .then(([results]) => {
-      console.log("passengersTable cr1?.,m  eated well");
+      // console.log("passengersTable created well", results);
     })
     .catch((error) => {
       console.log("error on passengersTable", error);

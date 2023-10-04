@@ -9,8 +9,14 @@ app.use(cors());
 let { pool, dotenv, createTable } = db;
 dotenv.config();
 createTable();
-let tokenKey = process.env.TOKENKEY;
-let PORT = process.env.PORT;
+let tokenKey = process.env.TOKENKEY,
+  PORT = process.env.PORT,
+  USER = process.env.USER;
+(DATABASE = process.env.DATABASE),
+  (PASSWORD = process.env.PASSWORD),
+  (HOST = process.env.HOST),
+  (TOKENKEY = process.env.TOKENKEY),
+  (PASSANGERS_PORT = process.env.PASSANGERS_PORT);
 app.listen(PORT, (error) => {
   if (error) return console.log(error);
   console.log(`server is running on port ${PORT}`);
@@ -39,13 +45,14 @@ app.post("/registerDrivers", async (req, res) => {
             pool
               .query(insertIntoDetails)
               .then(([data]) => {
+                loginDrivers("", phone, res);
                 console.log(data);
-                let token = jwt.sign({ userId: insertId }, tokenKey);
-                res.json({ data: "inserted successfully", token });
+                // let token = jwt.sign({ userId: insertId }, tokenKey);
+                // return res.json({ data: "inserted successfully", token });
               })
               .catch((error) => {
-                res.json({ data: "error 91" });
-                console.log(error);
+                res.json({ data: "error 91", error });
+                console.log("error is == ", error);
               });
           })
           .catch((error) => {
@@ -58,40 +65,54 @@ app.post("/registerDrivers", async (req, res) => {
       console.log(error);
     });
 });
-app.post("/checkDriversStatus", (req, res) => {
+let checkDriversStatus = async (userId) => {
+  // checkDriversStatus will be out sourced
+  let select = `select * from GUZO ,passengersdetail where userId=passangersId and  driversid='${userId}' and status in('acceptedByDriver','journeyStarted')`;
+  let responces = "";
+  await pool
+    .query(select)
+    .then(([result]) => {
+      if (result.length > 0) {
+        console.log(result);
+        responces = {
+          data: "Driver is with customer",
+          result: result,
+        };
+        return;
+      }
+      responces = { data: "Driver can start job" };
+    })
+    .catch((error) => {
+      responces = { data: "error" };
+      console.log(error);
+    });
+  return responces;
+};
+app.post("/checkDriversStatus", async (req, res) => {
   try {
     let { token } = req.query;
-    console.log("req.query", req.query);
+    // console.log("req.query", req.query);
     // return;
-    if (token == "undefined" || token == undefined) {
+    if (
+      token == "undefined" ||
+      token == undefined ||
+      token == null ||
+      token == "null"
+    ) {
       return res.json({ data: "login first" });
     }
     let { userId } = jwt.verify(token, tokenKey);
-    let select = `select * from GUZO ,passengersdetail where userId=passangersId and  driversid='${userId}' and status in('acceptedByDriver','journeyStarted')`;
-    pool
-      .query(select)
-      .then(([result]) => {
-        if (result.length > 0) {
-          console.log(result);
-          return res.json({ data: "Driver is with customer", result: result });
-        }
-        res.json({ data: "Driver can start job" });
-      })
-      .catch((error) => {
-        console.log(error);
-      });
+    let results = await checkDriversStatus(userId);
+    // console.log("result", result);
+    let { data, result } = results;
+    res.json({ data, result });
   } catch (error) {
-    res.json({ data: "error no 90" });
+    res.json({ data: "error no 90", error: error });
     console.log("error", "error no 90", error);
   }
   // res.json({ data: req.body });
 });
-app.post("/loginDrivers", (req, res) => {
-  // {
-  //   password: "marew123";
-  //   username: "+251922112480";
-  // }
-  let { password, username } = req.body;
+let loginDrivers = (password, username, res) => {
   let select = `select * from DriversDetail where email='${username}' or phoneNumber='${username}'`;
   pool
     .query(select)
@@ -101,7 +122,7 @@ app.post("/loginDrivers", (req, res) => {
         let id = data[0].id;
         console.log("id", id);
         let token = jwt.sign({ userId: id }, tokenKey);
-        return res.json({ token, data: `login success` });
+        return res.json({ token, data: `login success`, userProfile: data });
       } else {
         res.json({ data: `Phone or email not exists` });
       }
@@ -109,11 +130,20 @@ app.post("/loginDrivers", (req, res) => {
     .catch((error) => {
       console.log(error);
     });
-  // res.json({ data: req.body });
+};
+app.post("/loginDrivers", (req, res) => {
+  let { password, username } = req.body;
+  loginDrivers(password, username, res);
 });
-app.post("/checkIfPassangerRequestedTaxi", (req, res) => {
+app.post("/checkIfPassangerRequestedTaxi", async (req, res) => {
   let { token } = req.body;
   let { userId } = jwt.verify(token, tokenKey);
+  let { data } = (results = await checkDriversStatus(userId));
+
+  if (data == "Driver is with customer") {
+    return res.json({ data: results });
+  }
+  let CurrentStatus = "";
   let select = `select * from GUZO,passengersdetail where status = 'requestedByPassenger' and userId=passangersId`;
   pool
     .query(select)
@@ -131,15 +161,22 @@ app.post("/checkIfPassangerRequestedTaxi", (req, res) => {
     });
 });
 app.post("/aceptCustomersCall", (req, res) => {
-  // res.json({ data: req.body });
   let { token, guzoId } = req.body;
+  if (
+    token == null ||
+    token == "undefined" ||
+    token == undefined ||
+    token == "null"
+  )
+    return res.json({ data: "login first" });
   let { userId } = jwt.verify(token, tokenKey);
-  let update = `update GUZO set status='acceptedByDriver', driversId='${userId}' where guzoId='${guzoId}'`;
+  let update = `update GUZO set status = 'acceptedByDriver', driversId='${userId}' where guzoId='${guzoId}'`;
   pool
     .query(update)
-    .then((data) => {
+    .then(([data]) => {
       console.log(data);
-      return res.json({ data: "updated well" });
+      if (data.affectedRows > 0) return res.json({ data: "updated well" });
+      else res.json({ data: "no data found" });
     })
     .catch((error) => {
       console.log(error);
@@ -182,5 +219,75 @@ app.post("/arrivedIndestination", (req, res) => {
     });
 });
 app.get("/", (req, res) => {
-  res.send("<h1>it is transport server  and working well</h1>");
+  res.send(
+    `<h1>it is transport server  and working well</h1>TOKENKEY=${TOKENKEY},DATABASE=${DATABASE},PASSWORD=${PASSWORD},USER=${USER},HOST=${HOST},PASSANGERS_PORT=${PASSANGERS_PORT},PORT=${PORT}`
+  );
+});
+app.post("/cancelJourneyByDriver", (req, res) => {
+  let { token, guzoId } = req.body;
+  let { userId } = jwt.verify(token, tokenKey);
+  // res.json({ userId });
+  let update = `update GUZO set status='canceledByDriver' where guzoId='${guzoId}' and driversId='${userId}' `;
+  pool
+    .query(update)
+    .then((data) => {
+      console.log(data);
+      res.json({ data: "updated successfully" });
+    })
+    .catch((error) => {
+      res.json({ data: "error" });
+      console.log(error);
+    });
+});
+// here in case of before start journy it should verify  customer is still with driver
+app.post("/verifyIfCustomerIsNotWithOtherDriver", (req, res) => {
+  let { guzoId, token } = req.body.data;
+  let { userId } = jwt.verify(token, tokenKey);
+  console.log("guzoId", guzoId);
+  let select = `select * from GUZO where  guzoId = '${guzoId}'`;
+  // return res.json({ Message: req.body });
+  pool.query(select).then(([results]) => {
+    console.log("results", results);
+    let { status, driversId } = results[0];
+    if (results.length > 0) {
+      if (status == "requestedByPassenger")
+        res.json({
+          Message: "it can connect with you",
+          results: results,
+          guzoId,
+        });
+      else if (status == "canceledByPassenger") {
+        return res.json({
+          Message: "it is cancelled by customer.",
+          results: results,
+          guzoId,
+        });
+      } else if (
+        status == "acceptedByDriver" ||
+        status == "canceledByDriver" ||
+        status == "journeyStarted" ||
+        status == "journeyEnded"
+      ) {
+        if (userId == driversId) {
+          res.json({
+            Message: "it can connect with you",
+            results: results,
+            guzoId,
+          });
+        } else {
+          res.json({
+            Message: "it is connected with other driver",
+            results: results,
+            guzoId,
+          });
+        }
+      }
+    } else {
+      res.json({
+        Message: "This journey is canceled by system",
+        results,
+        guzoId,
+      });
+    }
+  });
 });

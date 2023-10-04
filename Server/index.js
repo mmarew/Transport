@@ -10,23 +10,34 @@ const dotenv = require("dotenv");
 dotenv.config();
 const { pool, createTable } = require("./Database.js");
 const jwt = require("jsonwebtoken");
+// const { default: Login } = require("../DriversPanel/src/Drivers/Login.js");
 const app = express();
 const PORT = process.env.PASSANGERS_PORT || 3003;
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cors());
 createTable();
+let tokenKey = process.env.TOKENKEY,
+  DATABASE = process.env.DATABASE,
+  PASSWORD = process.env.PASSWORD,
+  USER = process.env.USER,
+  HOST = process.env.HOST,
+  TOKENKEY = process.env.TOKENKEY,
+  PASSANGERS_PORT = process.env.PASSANGERS_PORT;
 let tokenkey = process.env.TOKENKEY;
 app.post("/checkPassangersStatus", async (req, res) => {
   let token = req.body.token;
   let results = await checkMyCurrentStatus({ token, res });
-  return;
-  if (results.result.length > 0)
-    res.json({ data: "on service", results: results.result[0] });
-  else
-    res.json({ data: "user can call taxi", results: { status: "no service" } });
 });
 let checkMyCurrentStatus = async ({ token, res }) => {
+  if (
+    token == null ||
+    token == "null" ||
+    token == undefined ||
+    token == "undefined"
+  ) {
+    return res.json({ data: "Login first" });
+  }
   let { userId } = jwt.verify(token, tokenkey);
   let amIRegistered = `select * from passengersdetail where userId='${userId}'`;
   let Available = false;
@@ -43,11 +54,11 @@ let checkMyCurrentStatus = async ({ token, res }) => {
     .catch((error) => {
       Available = false;
       console.log(error);
-      res.json({ data: "error" });
+      return res.json({ data: "error" });
     });
   if (!Available) return;
 
-  let Check = `SELECT * FROM GUZO, DriversDetail WHERE passangersId = '${userId}'  AND status IN ('requestedByPassenger', 'acceptedByDriver','journeyStarted') and (DriversDetail.driversId = GUZO.driversid or GUZO.driversid is null)`;
+  let Check = `SELECT * FROM GUZO, DriversDetail WHERE passangersId = '${userId}'  AND status IN ('requestedByPassenger', 'acceptedByDriver','journeyStarted','journeyEnded','canceledByDriver') and (DriversDetail.driversId = GUZO.driversid or GUZO.driversid is null)`;
 
   let userStatus = "";
   let resData = {};
@@ -159,15 +170,8 @@ app.post("/login", (req, res) => {
     .then(([data]) => {
       console.log(data);
       if (data.length > 0) {
-        console.log(
-          "{ userId: data[0].userId }",
-          { userId: data[0].userId },
-          "tokenkey",
-          tokenkey
-        );
-        // return;
         let token = jwt.sign({ userId: data[0].userId }, tokenkey);
-        res.json({ data: "success", token });
+        res.json({ data: "success", token, tokenkey, userProfile: data });
       } else {
         res.json({ data: "Phone number / email is not registered." });
       }
@@ -195,5 +199,30 @@ app.post("/cancelPasangersRequest", (req, res) => {
   // res.json({ data: req.body });
 });
 app.get("/", (req, res) => {
-  res.send("<h1>it is passangers server  and working well</h1>");
+  `<h1>it is passangers transport server  and working well</h1>TOKENKEY=${TOKENKEY},DATABASE=${DATABASE},PASSWORD=${PASSWORD},USER=${USER},HOST=${HOST},PASSANGERS_PORT=${PASSANGERS_PORT},PORT=${PORT}`;
+});
+app.post("/confirmDeliveryByPassangers", (req, res) => {
+  let { guzoId, token, Status } = req.body;
+  console.log("confirmDeliveryByPassangers", req.body, "token", token);
+  if (token == "undefined" || token == undefined || token == "null") {
+    return res.json({ data: "login first" });
+  }
+  let { userId } = jwt.verify(token, tokenkey);
+  console.log("userId", userId);
+  let confirmMessage = "";
+  if (Status == "canceledByDriver") {
+    confirmMessage = "CancilationBydriverConfirmedByPassangers";
+  } else if (Status == "journeyEnded") {
+    confirmMessage = "journeyEndedConfirmedByPassangers";
+  }
+  let update = `update  GUZO set status='${confirmMessage}' where guzoId='${guzoId}' and passangersId='${userId}'`;
+  pool
+    .query(update)
+    .then(([Results]) => {
+      res.json({ data: "updated" });
+    })
+    .catch((error) => {
+      res.json({ data: "error", error: error });
+    });
+  // res.json({ data: req.body });
 });
